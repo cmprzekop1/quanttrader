@@ -1,0 +1,6 @@
+still need delete account button
+finish up user guide
+finish gui
+add monthly return method 
+
+^once completed done with project

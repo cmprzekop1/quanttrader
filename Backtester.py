@@ -4,10 +4,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 import statsmodels.formula.api as smf
+import statsmodels.api as sm
 from scipy.stats import skew, kurtosis, shapiro
 
 class Portfolio:
-    def __init__(self, tickers=[], start=GetData.startD, end = GetData.currentdate, ini_cap=1000, save_new=True):
+    def __init__(self, tickers=[], start=GetData.startD, end = GetData.currentdate, ini_cap=1000, save_new=False):
         self.stocks = []
         self.cur_cap = ini_cap
         self.backtest_df = None
@@ -17,20 +18,20 @@ class Portfolio:
         self.save_new = save_new
         self.stats = None
         self.ff_stats= None
-        self.ini_cap = ini_cap
+        self.ini_cap = ini_cap 
 
         for ticker in tickers:
             self.addStock(ticker)
 
         #takes a ticker or a stock
     def addStock(self, stock_inst):
+        print(stock_inst)
         #if input is a ticker, fetch and create stock object
         if isinstance(stock_inst, str):
-            stock_inst = GetData.Stonk(stock_inst, df = None, start=self.startD, end = self.endD, save_new=self.save_new, debug=False)
-            self.stocks.append(stock_inst)
-        elif isinstance(stock_inst, GetData.Stonk):
+            stock_inst = GetData.Stonk(stock_inst, start=self.startD, end = self.endD, save_new=self.save_new)
+        if isinstance(stock_inst, GetData.Stonk):
             stock_inst.save_new = self.save_new
-            self.stocks.append(stock_inst)
+        self.stocks.append(stock_inst)
         self.updateIniCap(self.ini_cap)
         return stock_inst
     
@@ -39,20 +40,30 @@ class Portfolio:
         for stock in self.stocks:
             self.cur_cap -= stock.ini_cap
     
-    def equalWeightPortfolio(self, tickers, capital=1000):
-        num_stocks = len(tickers)
-        ini_cap = capital / num_stocks
+    def equalWeightPortfolio(self, *args):
+        num_stocks = len(self.stocks)
+        if (args):
+            ini_cap = args[0] / num_stocks
+        else: 
+            ini_cap = 1000/num_stocks
         #self.ini_cap = self.ini_cap - capital
-        for ticker in tickers:
-            stock_inst = GetData.Stonk(ticker, start=self.startD, end=self.endD, ini_cap = ini_cap, save_new=self.save_new)
-            stock_inst.addStrat(stock_inst.buyStock(ini_cap, inDollars=True))
-            self.addStock(stock_inst)
-        #self.updateIniCap(self.ini_cap)
+        for ticker in self.stocks:
+            try:
+                print(type(ticker))
+                print(len(self.stocks))
+                stock_inst = GetData.Stonk(ticker.ticker, start=self.startD, end=self.endD, save_new=self.save_new)
+                stock_inst.addStrat(stock_inst.buyStock(stock_inst.ini_cap, inDollars=True))
+                print(len(stock_inst.strats))
+                self.addStock(stock_inst)
+            except ValueError as e:
+                print(f"Error adding stock {ticker}: {e}")
+
+        self.updateIniCap(self.ini_cap)
     
     def marketCapWeightedPortfolio(self, tickers, capital=1000):
         total = 0
         for ticker in tickers:
-            stock_inst = self.addStock(ticker)
+            stock_inst = self.addStock(ticker.ticker)
             total += stock_inst.sum_stats['Market Cap']
         
         for stock in self.stocks:
@@ -68,7 +79,6 @@ class Portfolio:
         for stock in self.stocks:
             if (stock.ticker==ticker):
                 return stock
-                break
         return None
     
     def markowitz(self, weight=1, msr=True, plot=False):
@@ -108,7 +118,7 @@ class Portfolio:
                 weights[self.stocks[i].ticker] = x * weight
                 stock_instance = self.get_by_ticker(self.stocks[i].ticker)
                 stock_instance.ini_cap = x * weight
-                stock_instance.addStrats(stock_instance.buyStock(x * weight,inDollars=True))
+                stock_instance.addStrat(stock_instance.buyStock(x * weight,inDollars=True))
             self.updateIniCap(weight)
 
             if (plot):
@@ -136,7 +146,7 @@ class Portfolio:
     
     def backtest(self, plot=False, stats=False, ff_stats=False, ff_2=False, saveToCsv=False):
         ticker_list = []
-        self.backtest_df = pd.DataFrame(self.stocks[0].df.Date)
+        self.backtest_df = pd.DataFrame(self.stocks[0].df.date)
         #return backtest_df
         for stock in self.stocks:
             stock.backtest()
@@ -147,8 +157,8 @@ class Portfolio:
         self.backtest_df['total_strats'] = self.backtest_df[ticker_list].sum(axis=1)
         self.backtest_df['cash'] = self.cur_cap
         self.backtest_df['total'] = self.backtest_df['total_strats'] + self.cur_cap
-        self.start = self.backtest_df['Date'].iloc[0]
-        self.end = self.backtest_df['Date'].iloc[-1]
+        self.start = self.backtest_df['date'].iloc[0]
+        self.end = self.backtest_df['date'].iloc[-1]
 
         if (plot):
             if 'total_returns'not in self.backtest_df.columns:
@@ -163,7 +173,7 @@ class Portfolio:
                 self.stats = {}  
                 self.stats['pct_return'] = ((self.backtest_df['total'].iloc[-1] - self.backtest_df['total'].iloc[0]) / self.backtest_df['total'].iloc[0])
                 self.stats['vol'] = np.std(self.backtest_df['total_returns'])
-                self.stats['vol_annual'] = self.stats['vol'] * np.sqrt(365-self.startD)
+                self.stats['vol_annual'] = self.stats['vol'] * np.sqrt(252)
                 self.stats['mean_daily_return'] = np.mean(self.backtest_df['total_returns'])
                 self.stats['mean_annual_return'] = ((1+ self.stats['mean_daily_return'])**252) - 1
 
@@ -177,50 +187,74 @@ class Portfolio:
                     print("Returns stats")
                     GetData.pDict(self.stats)
 
-                self.backtest_df['Date'] = pd.to_datetime(self.backtest_df['Date'])
-                self.backtest_df.set_index('Date', inplace = True)
+                self.backtest_df['date'] = pd.to_datetime(self.backtest_df['date'])
+                self.backtest_df.set_index('date', inplace = True)
 
         if (ff_stats):
         #resample to monthly freq and sum returns for months
+            self.backtest_df.index = self.backtest_df.index.tz_localize(None)
+            monthly_returns = self.backtest_df.resample("ME").agg(lambda x: (x+1).prod() - 1).to_period("M")
 
-            monthly_returns = self.backtest_df.resample("M").agg(lambda x: (x+1).prod() - 1).to_period("M")
+            if 'returns' not in monthly_returns.columns:
+                monthly_returns = monthly_returns.rename(columns={'total_returns': 'returns'})
 
-        if 'returns' not in monthly_returns.columns:
-            monthly_returns = monthly_returns.rename(columns={'total_returns': 'returns'})
-        
-        ff_factor_data = None
-        path = r"/Users/16096/Desktop/Projects/stockbacktester/data/factor_data.pkl"
-        with open(path, 'rb') as handle:
-            ff_factor_data = pickle.load(handle)
-            #print('factor data' and ff_factor_data
+            #Fama French
+            ff_factor_data = None
 
-        merged_df = pd.merge(ff_factor_data, monthly_returns['returns'], left_index=True, right_index=True, how='inner')
-        merged_df['returns'] = merged_df['returns']*100
+            path = r"C:/Users/16096/Desktop/Projects/stockbacktester/data/factor_data.pkl"
+            with open(path, 'rb') as handle:
+                try:
+                    ff_factor_data = pickle.load(handle)
+                except EOFError: 
+                    ff_factor_data = 0
 
-        if (merged_df.empty):
-            return "No available FF data"
-        merged_df['port_excess'] = (merged_df['returns']).sub(merged_df['RF'])
-        merged_df.rename(column={'Mkt-RF': 'Mkt_RF'}, inplace=True, errors=False)
-        
-        model = smf.ols(formula = 'port_excess ~ Mkt_RF + SMB + HML + RMW + CMA', data = merged_df)
-        fit = model.fit()
-        adj_r_sq = fit.rsquared_adj
-        ann_alpha = np.power(1 + (fit.params["Intercept"]/100), 12) - 1
-        self.ff_stats = {
-                "adjusted_r_squared": adj_r_sq,
-                "HML p value": fit.pvalues["HML"], # high book to market ratio (value stocks) - low (growth stocks)
-                "SMB p value": fit.pvalues["SMB"], # small cap - big cap
-                "RMW p value": fit.pvalues["RMW"], # High operating profit - low
-                "CMA p value": fit.pvalues["CMA"], # Conservative minus agressive
-                "HML": fit.params["HML"],
-                "SMB": fit.params["SMB"],
-                "RMW": fit.params["RMW"],
-                "CMA": fit.params["CMA"],
-                "Alpha": fit.params["Intercept"]/100,
-                "Annual Alpha": '{:f}'.format(ann_alpha),
-                "ann_alpha": ann_alpha,
-                "Beta": fit.params["Mkt_RF"]
-        }
+            try:
+                merged_df = pd.merge(ff_factor_data, monthly_returns['returns'], left_index=True, right_index=True, how='inner')
+                merged_df['returns'] = merged_df['returns']*100
+
+            except TypeError:
+                return "No available FF data"
+            merged_df['port_excess'] = (merged_df['returns']).sub(merged_df['RF'])
+            merged_df.rename(column={'Mkt-RF': 'Mkt_RF'}, inplace=True, errors=False)
+            
+            model = smf.ols(formula = 'port_excess ~ Mkt_RF + SMB + HML + RMW + CMA', data = merged_df)
+            fit = model.fit()
+            adj_r_sq = fit.rsquared_adj
+            ann_alpha = np.power(1 + (fit.params["Intercept"]/100), 12) - 1
+            self.ff_stats = {
+                    "adjusted_r_squared": adj_r_sq,
+                    "HML p value": fit.pvalues["HML"], # high book to market ratio (value stocks) - low (growth stocks)
+                    "SMB p value": fit.pvalues["SMB"], # small cap - big cap
+                    "RMW p value": fit.pvalues["RMW"], # High operating profit - low
+                    "CMA p value": fit.pvalues["CMA"], # Conservative minus agressive
+                    "HML": fit.params["HML"],
+                    "SMB": fit.params["SMB"],
+                    "RMW": fit.params["RMW"],
+                    "CMA": fit.params["CMA"],
+                    "Alpha": fit.params["Intercept"]/100,
+                    "Annual Alpha": '{:f}'.format(ann_alpha),
+                    "ann_alpha": ann_alpha,
+                    "Beta": fit.params["Mkt_RF"]
+            }
+            factors = ['SMB', 'HML', 'RMW', 'CMA']
+            print("FF STATS")
+            (self.ff_stats)
+
+            for factor in factors:
+                if (self.ff_stats[f"{factor} p value"] < 0.05):
+                    print(f"{factor} is statistically significant.") 
+
+            if ff_2:
+                 # another regression, same results
+                y = merged_df[['port_excess']]
+                X = merged_df[['Mkt_RF','SMB','HML','RMW','CMA']]
+                X_sm = sm.add_constant(X)
+                model = sm.OLS(y,X_sm)
+                results = model.fit()
+                ff_stats = results.summary()
+                print(ff_stats)
+    
+        return self.backtest_df.dropna()
         
 
     #plot backtest
@@ -230,11 +264,11 @@ class Portfolio:
         plt.show()
 
         #returns chart
-        self.backtest_df.plot(x='Date', y= 'total_returns')
+        self.backtest_df.plot(x='date', y= 'total_returns')
 
         #cumulative
-        self.backtest_df.plot(x='Date', y='cum_daily_return')
-        ax = self.backtest_df.plot(x=f'Date', y='total')
+        self.backtest_df.plot(x='date', y='cum_daily_return')
+        ax = self.backtest_df.plot(x=f'date', y='total')
         ax.set_xlim(pd.Timestamp(self.start), pd.Timestamp(self.end))
 
 def getRandomWeights(numstocks):
@@ -260,10 +294,18 @@ def convert_to_tuple(date_str):
     return (date_object.year, date_object.month, date_object.day)
     
 
-stock = GetData.Stonk('MSFT')
-stock.addStrat(stock.buyStock(1))
 
-    
+stock_t = GetData.Stonk('TSLA', start = '2024-01-01', end = '2024-07-28', ini_cap=500, save_new=False )
+stock_t.addStrat(stock_t.buyStock(1))
+stock_MSFT = GetData.Stonk('MSFT', start = '2024-01-01', end = '2024-07-28', ini_cap=500, save_new=False)
+stock_MSFT.addStrat(stock_MSFT.buyStock(1))
+
+portfolio_instance = Portfolio(start='2024-01-01', end  = '2024-07-28', ini_cap =1000)
+portfolio_instance.addStock(stock_t)
+portfolio_instance.addStock(stock_MSFT)
+
+print(portfolio_instance.backtest(ff_stats=True, ff_2=True))
+
 
 
 

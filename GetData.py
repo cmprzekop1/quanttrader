@@ -2,20 +2,16 @@
 #MACD Strategy
 #Gather the opening and closing prices of the stock for each day in time range
 import pandas as pd
-from pandas_datareader.yahoo.headers import DEFAULT_HEADERS
+import matplotlib.pyplot as plt
+import os
+import pandas_datareader as pdr
 import datetime
 import pickle
-import requests_cache
 import requests
-import yfinance as yf #(API) can use other packages like Naver Finance data or Nasdaq Trader Symbols
-yf.pdr_override()
-
-expire_after = datetime.timedelta(days=5)
-session = requests_cache.CachedSession(cache_name='cache', backend='sqlite', expire_after = expire_after)
-session.headers = DEFAULT_HEADERS
-
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
+load_dotenv()
 
 #date class for date updates
 class Dates:
@@ -25,9 +21,9 @@ class Dates:
         self.curr = current
         
     def setDate(self):
-        if (datetime.date.today() - self.current).days > 1:
-            hold = datetime.days.today().strftime("%Y-%m-%d")
-            self.curr = hold.strftime("%Y-%m-%d")
+        if (datetime.date.today() - self.curr) > 1:
+            self.curr = datetime.date.today().strftime("%Y-%m-%d")
+            
 
 startD = Dates(2024).start
 startD = startD.strftime("%Y-%m-%d")
@@ -59,11 +55,11 @@ def convert_to_num(string):
 
 #save data to a pkl file so we don't have to redownload at start
 class Stonk:
-    def __init__(self, ticker, start=startD, end = currentdate, df=None, ini_capital = 1000, path = r"C:/Users/16096/Desktop/Projects/stockbacktester/data/stocks.pkl", save_new=True, debug = False):
+    def __init__(self, ticker, start=startD, end = currentdate, df=None, ini_cap = 1000, path = r"C:/Users/16096/Desktop/Projects/stockbacktester/data/stocks.pkl", save_new=True, debug = False):
         self.ticker = ticker
-        self.ini_cap = ini_capital
+        self.ini_cap = ini_cap
         self.path = path
-        self.savedData = None
+        self.savedData = {}
         self.df = df
         self.start = start
         self.end = end
@@ -76,37 +72,32 @@ class Stonk:
         #context manager to open file
         with open(self.path, 'rb') as handle:
             self.savedBars = pickle.load(handle)
-            if self.printdebug:
-                print("saved bars")
-                print(self.savedBars.keys())
             if ticker in self.savedBars:
-                if self.printdebug:
-                    print("ticker exists in savedBars")
+                print("ticker exists in savedBars")
                 self.df = self.savedBars[ticker]
 
         if (self.df is None or save_new):
-            print(1)
-            print(self.start)
-            print(self.end)
-            self.df = self.getData(ticker, start = self.start, end = self.end, save_new=True)
+                self.df = self.getData(self.ticker, start = self.start, end = self.end, save_new=True)
+                if self.df is None:
+                    raise ValueError(f"Failed to fetch data for {ticker}")
         self.save = self.df
-        self.positions = pd.DataFrame(self.df.index)
+        self.positions = pd.DataFrame(self.save.index)
         self.sum_stats = self.sum_stats_getter(self.ticker)
 
     #gets stock data for day
-    def getData(self, ticker, start = startD, end = currentdate, save_new = False, saveToCSV = True):
+    def getData(self, ticker, start, end, save_new = False, saveToCSV = False):
         #check if data exists
-        if (self.save_new or self.ticker not in self.savedData):
+        if (save_new or ticker not in self.savedBars):
             try: 
-                stock_data = yf.download(self.ticker, start=start, end=end)
-                stock_data = stock_data.reset_index(inplace=True)
+                df = pdr.get_data_tiingo(ticker,start= start, end = end, api_key='b11072847c2bc8387ad9f5bfec15ec202bbbe9da')
+                df.reset_index(inplace=True)
                 if saveToCSV:
                     path = r"C:/Users/16096/Desktop/Projects/stockbacktester/data/stock_csv"
-                    stock_data.to_csv(f'{path + "/" +self.ticker}.csv', index =False)
-                self.savedData[self.ticker] = stock_data
+                    df.to_csv(f'{path + "/" +self.ticker}.csv', index =False)
+                self.savedData[self.ticker] = df
                 with open(self.path, 'wb') as handle:
                     pickle.dump(self.savedData, handle, protocol=pickle.HIGHEST_PROTOCOL)
-                return stock_data
+                return df
             except:
                 print("Skipping stock {}, bad data".format(self.ticker))
         else:
@@ -141,39 +132,66 @@ class Stonk:
     def viewStrats(self):
         for x in self.strats:
             print(x)
+
+
     def backtest(self):
+        #extracts list of strategies stored in self.starts
         strategies = self.strats
 
+        #concats all the DFs in 'strategies', groups them together by the first level of their index, and calcs mean of each group
         self.positions[self.ticker + '_position'] = pd.concat(strategies).groupby(level=0).mean()
+
+        #ensures there is no initial stock position
         self.positions[self.ticker + '_position'].at[0] = 0
-        self.positions[self.ticker + '_open'] = self.save.Open
-        self.positions[self.ticker + '_close'] = self.save.Close
-        self.positions['date'] = self.save.Date
+
+        #add columns of opening and closing price to the dataframe
+        self.positions[self.ticker + '_open'] = self.save.open
+        self.positions[self.ticker + '_close'] = self.save.close
+
+        #adds dates column to dataframe
+        self.positions['date'] = self.save.date
+
+        #calculates the difference in positions from one time step to the next and stores in new '_pos_diff' column
         self.positions[self.ticker + '_pos_diff'] = self.positions[self.ticker + "_position"].diff()
+
+        #initiializes hodlings and the position difference for the first row to 0
         self.positions[self.ticker + "_holdings"] = 0 
         self.positions[self.ticker + "_pos_diff"].at[0] = 0
+
+        #set initial cash captial to ini_cap
         self.positions.at[0, f"{self.ticker}_cash"] = self.ini_cap
 
+        #iterates over each row in self.positions. skips first row
         for i, r in self.positions.iterrows():
             if i == 0:
                 continue
+            
 
+            #for each row, extracts the opening price, cash from prev row, holdings from prev row, curr position, pos difference
             price = r[self.ticker + "_open"]
             cash = self.positions.loc[i - 1][self.ticker + "_cash"]
             holdings  = self.positions.loc[i-1][self.ticker + "_holdings"]
-            position = self.positions.loc[i][self.ticker + '_posiiton']
+            position = self.positions.loc[i][self.ticker + '_position']
             pos_diff = self.positions.loc[i][self.ticker+ '_position'] - self.positions.loc[i-1][self.ticker + '_position']
             cash_needed = pos_diff * price
-            
+            #^calcs the cash needed to adjust position
+
+
+            #Tests if there is enough cash to make a positional buy by testing if there is enough cash and flag 'positionOutCash' flag is not set
             if (cash > cash_needed) and (not self.positionOutCash):
+                #if above is so, cash is reduced by cash needed
                 cash = cash - cash_needed
             #holdings = holdings + cash_needed
 
-            #Tests if there is enough cash to make a positional buy
+
+            #if cash needed is negative (indicating a sell), it adjusts cash and checks if cash is greater than value of current position. Resets 'poisitionOutCash' if true
             elif (cash_needed < 0):
-                cash = cash-cash_needed
+                cash = cash-cash_needed #minusing a negative is addition
                 if(cash > (position*price)):
+                    #if above is so, reset flag
                     self.positionOutCash = False
+
+            #if there is not enough cash: if its the first iteration, it sets the position based on available cash. Otherwise it retains previous position
             else:
                 if (i == 1): #ran out of money
                     self.positions.at[i, f"{self.ticker}_position"] = cash / price #set first index position
@@ -181,11 +199,15 @@ class Stonk:
                 else:
                     self.positions.at[i,f"{self.ticker}_position"] = self.positions.at[i-1, f"{self.ticker}_position"] #set position to prev position
 
+            #updates cash value for current row
             self.positions.at[i, f"{self.ticker}_cash"] = cash
            
-        self.positions[f'{self.ticker}_holdings'] = self.positions[f"{self.ticker}__position"] * self.positions[f"{self.ticker}_open"]
+        #out of loop, calculates holdings by multiplying position and opening price.   
+        self.positions[f'{self.ticker}_holdings'] = self.positions[f"{self.ticker}_position"] * self.positions[f"{self.ticker}_open"]
+        #calcs total value by adding cash an holdings | rounds to two decimal places
         self.positions['total'] = self.positions[f"{self.ticker}_cash"] + self.positions[f"{self.ticker}_holdings"]
         self.positions = self.positions.round(2)
+        #returns self.positions dataframe
         return self.positions
     
     def plot(self):
@@ -196,10 +218,10 @@ class Stonk:
     def saveCSV(self):
         self.positions.set_index('date', inplace=True)
         self.positions.rename(columns={f"{self.ticker}_position": 'Position', 'total': 'Total'}, inplace=True, errors=False)
-        self.df.set_index('Date', inplace=True)
-        self.df['Date'] = self.df.index
-        df = pd.merge(self.df[['Date', 'Open', 'Hihg', 'Low', 'Close', 'Adj Close', 'Volume']], self.positions[["Position", "Total"]], left_index=True, right_index=True, how='inner')
-        #df['Date'] = df.index
+        self.df.set_index('date', inplace=True)
+        self.df['date'] = self.df.index
+        df = pd.merge(self.df[['date', 'open', 'high', 'low', 'close', 'adjClose', 'volume']], self.positions[["Position", "Total"]], left_index=True, right_index=True, how='inner')
+        #df['date'] = df.index
         path = r"C:/Users/16096/Desktop/Projects/stockbacktester/data/stock_csv"
         df.to_csv(f'{path + "/" + self.ticker}.csv', index=False)
 
@@ -207,15 +229,18 @@ class Stonk:
 
     def macd(self, short=12, long=26):
         df = self.df
-        exp1 = df['Adj Close'].ewm(span=short, adjust=False).mean()
-        exp2 = df['Adj Close'].ewm(span=long, adjust=False).mean()
+        exp1 = df['adjClose'].ewm(span=short, adjust=False).mean()
+        exp2 = df['adjClose'].ewm(span=long, adjust=False).mean()
         df['macd'] = exp1 - exp2
         df['macd_norm']  = (df['macd'] - df['macd'].min()) / (df['macd'].max() - df['macd'].min()) #normalize df and add to a column
         return df['macd_norm']
     
     def buyStock(self, amount, inDollars=False):
         if inDollars: #if true then buy amount of stock
-            first_price = self.df['Open'].iloc[0]
+            first_price = self.df['open'].iloc[0]
+            print(first_price)
+            print(amount)
             shares = amount / first_price
+            print(self.save.index)
             return pd.Series(shares, index = self.save.index)
         return pd.Series(amount, index = self.save.index)
