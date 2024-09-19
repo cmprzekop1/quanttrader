@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+        }
+
+        .dashboard-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 250px;
+            background-color: #1a1a1a;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .logo {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 1px solid #333;
+        }
+
+        .menu {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .menu li {
+            border-bottom: 1px solid #333;
+        }
+
+        .menu li a {
+            color: #fff;
+            text-decoration: none;
+            padding: 15px 20px;
+            display: block;
+            transition: background 0.3s;
+        }
+
+        .menu li a:hover {
+            background-color: #575757;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #fff;
+            padding: 15px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .header .user-info {
+            font-size: 18px;
+        }
+
+        .header .actions .logout-btn {
+            color: #ff4c4c;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .overview {
+            margin-top: 20px;
+        }
+
+        .overview h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .stat-card {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            flex: 1;
+            margin-right: 20px;
+        }
+
+        .stat-card:last-child {
+            margin-right: 0;
+        }
+
+        .stat-card h3 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .stat-card p {
+            font-size: 22px;
+            color: #0073e6;
+            font-weight: bold;
+        }
+
+        .user-table {
+            margin-top: 30px;
+        }
+
+        .user-table h2 {
+            font-size: 22px;
+            margin-bottom: 20px;
+        }
+
+        .user-table table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .user-table table thead {
+            background-color: #0073e6;
+            color: #fff;
+        }
+
+        .user-table table thead th {
+            padding: 15px;
+            text-align: left;
+        }
+
+        .user-table table tbody tr {
+            border-bottom: 1px solid #ddd;
+        }
+
+        .user-table table tbody tr:hover {
+            background-color: #f4f4f4;
+        }
+
+        .user-table table tbody td {
+            padding: 15px;
+            text-align: left;
+        }
+
+        .action-btn {
+            background-color: #0073e6;
+            color: #fff;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .action-btn:hover {
+            background-color: #005bb5;
+        }
+        .sidebar {
+            height: 100%;
+            width: 200px;
+            position: fixed;
+            z-index: 1;
+            top: 0;
+            left: 0;
+            background-color: #111;
+            overflow-x: hidden;
+            padding-top: 20px;
+        }
+
+        .sidebar a {
+            padding: 10px 15px;
+            text-decoration: none;
+            font-size: 18px;
+            color: #818181;
+            display: block;
+        }
+
+        .sidebar a:hover {
+            color: #f1f1f1;
+        }
+
+        .main {
+            margin-left: 210px;
+            padding: 20px;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 400px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2 class="w3-center w3-padding-16 w3-text-white">Admin Dashboard</h2>
+    <a href="#home" onclick="showTab('home')">Home</a>
+    <a href="#sales" onclick="showTab('sales')">Strategies</a>
+    <a href="#inventory" onclick="showTab('inventory')">History</a>
+    <a href="#customers" onclick="showTab('customers')">Community</a>
+    <a href="#logout" onclick="logout()">Logout</a>
+</div>
+
+<div class="main">
+    <div id="home" class="tab-content">
+        <main class="main-content">
+            <header class="header">
+                <div class="user-info">
+                    <p>Welcome, Admin</p>
+                </div>
+                <div class="actions">
+                    <a href="#" class="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                </div>
+            </header>
+            <section class="overview">
+                <h1>Dashboard Overview</h1>
+                <div class="stats">
+                    <div class="stat-card">
+                        <h3>Recent Backtest</h3>
+                        <p>1,234</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Sessions</h3>
+                        <p>123</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>New Signups</h3>
+                        <p>56</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Revenue</h3>
+                        <p>$12,345</p>
+                    </div>
+                </div>
+            </section>
+            <section class="user-table">
+                <h2>Recent Users</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User ID</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>001</td>
+                            <td>john_doe</td>
+                            <td>john@example.com</td>
+                            <td>Active</td>
+                            <td>
+                                <button class="action-btn">View</button>
+                                <button class="action-btn">Edit</button>
+                            </td>
+                        </tr>
+                        <!-- Repeat rows as needed -->
+                    </tbody>
+                </table>
+            </section>
+        </main>
+    </div>
+
+    <div id="sales" class="tab-content" style="display:none;">
+        <h2>Sales</h2>
+        <div class="chart-container">
+            <canvas id="salesChart"></canvas>
+        </div>
+    </div>
+
+    <div id="inventory" class="tab-content" style="display:none;">
+        <h2>Inventory</h2>
+        <div class="chart-container">
+            <canvas id="inventoryChart"></canvas>
+        </div>
+    </div>
+
+    <div id="customers" class="tab-content" style="display:none;">
+        <h2>Customers</h2>
+        <div class="chart-container">
+            <canvas id="customersChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+    function showTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.style.display = 'none';
+        });
+        document.getElementById(tabId).style.display = 'block';
+    }
+
+    function logout() {
+        window.location.href = '/logout';
+    }
+
+    window.onload = function() {
+        const salesCtx = document.getElementById('salesChart').getContext('2d');
+        const inventoryCtx = document.getElementById('inventoryChart').getContext('2d');
+        const customersCtx = document.getElementById('customersChart').getContext('2d');
+
+        const salesChart = new Chart(salesCtx, {
+            type: 'line',
+            data: {
+                labels: ['January', 'February', 'March', 'April', 'May', 'June', 'July'],
+                datasets: [{
+                    label: 'Sales',
+                    data: [65, 59, 80, 81, 56, 55, 40],
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        const inventoryChart = new Chart(inventoryCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Product 1', 'Product 2', 'Product 3', 'Product 4'],
+                datasets: [{
+                    label: 'Inventory',
+                    data: [200, 150, 80, 120],
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.2)',
+                        'rgba(54, 162, 235, 0.2)',
+                        'rgba(255, 206, 86, 0.2)',
+                        'rgba(75, 192, 192, 0.2)'
+                    ],
+                    borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(75, 192, 192, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        const customersChart = new Chart(customersCtx, {
+            type: 'pie',
+            data: {
+                labels: ['New Customers', 'Returning Customers'],
+                datasets: [{
+                    label: 'Customers',
+                    data: [300, 150],
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.2)',
+                        'rgba(54, 162, 235, 0.2)'
+                    ],
+                    borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(54, 162, 235, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    };
+</script>
+
+</body>
+</html>
